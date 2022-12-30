@@ -1,25 +1,33 @@
-use cosmwasm_std::{Binary, Deps, DepsMut, Empty, entry_point, Env, MessageInfo, Response, StdResult, to_binary};
+use cosmwasm_std::{Binary, Deps, DepsMut, entry_point, Env, MessageInfo, Response, StdResult, to_binary};
 
 mod contract;
 pub mod msg;
+mod state;
 
 #[entry_point]
-pub fn instantiate(_deps: DepsMut, _env: Env, _info: MessageInfo, _msg: Empty) -> StdResult<Response> {
-    Ok(Response::new())
+pub fn instantiate(deps: DepsMut, _env: Env, info: MessageInfo, msg: msg::InstantiateMsg) -> StdResult<Response> {
+    contract::instantiate(deps, msg, info)
 }
 
 #[entry_point]
-pub fn query(_deps: Deps, _env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: msg::QueryMsg) -> StdResult<Binary> {
     use msg::QueryMsg::*;
     use contract::query;
 
     match msg {
-        Value {} => to_binary(&query::value()),
+        Value {} => to_binary(&query::value(deps)?),
         Increment { number } => to_binary(&query::increment(number)),
     }
 }
 
 #[entry_point]
-pub fn execute(_deps: DepsMut, _env: Env, _info: MessageInfo, _msg: Empty) -> StdResult<Response> {
-    Ok(Response::new())
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: msg::ExecMsg) -> StdResult<Response> {
+    use contract::exec;
+    use msg::ExecMsg::*;
+
+    match msg {
+        Donate {} => exec::donate(deps, info),
+        Withdraw {} => exec::withdraw(deps, env, info),
+        WithdrawTo { recipient, funds } => exec::withdraw_to(deps, env, info, recipient, funds),
+    }
 }
