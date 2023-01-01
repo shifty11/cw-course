@@ -21,8 +21,8 @@ pub mod query {
         Ok(ValueResp { value })
     }
 
-    pub fn increment(value: u64) -> ValueResp {
-        ValueResp { value: value + 1 }
+    pub fn increment(value: u64) -> StdResult<ValueResp> {
+        Ok(ValueResp { value: value + 1 })
     }
 }
 
