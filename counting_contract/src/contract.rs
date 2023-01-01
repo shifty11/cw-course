@@ -27,14 +27,14 @@ pub mod query {
 }
 
 pub mod exec {
-    use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128};
+    use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+    use crate::error::ContractError;
 
     use crate::state::{COUNTER, MINIMAL_DONATION, OWNER};
 
-    pub fn donate(deps: DepsMut, info: MessageInfo) -> StdResult<Response> {
+    pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
         let mut counter = COUNTER.load(deps.storage)?;
         let minimal_donation = MINIMAL_DONATION.load(deps.storage)?;
-
 
         if minimal_donation.amount.is_zero() ||
             info.funds.iter().any(|coin| {
@@ -52,10 +52,10 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Response> {
+    pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(StdError::generic_err("Unauthorized"));
+            return Err(ContractError::Unauthorized {owner: owner.to_string()});
         }
 
         let balance = deps.querier.query_all_balances(&env.contract.address)?;
@@ -73,10 +73,10 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn withdraw_to(deps: DepsMut, env: Env, info: MessageInfo, recipient: String, funds: Option<Vec<Coin>>) -> StdResult<Response> {
+    pub fn withdraw_to(deps: DepsMut, env: Env, info: MessageInfo, recipient: String, funds: Option<Vec<Coin>>) -> Result<Response, ContractError>  {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(StdError::generic_err("Unauthorized"));
+            return Err(ContractError::Unauthorized {owner: owner.to_string()});
         }
 
         let mut balance = deps.querier.query_all_balances(&env.contract.address)?;
@@ -113,13 +113,14 @@ pub mod exec {
 
 #[cfg(test)]
 mod test {
-    use std::borrow::BorrowMut;
+    use std::borrow::{BorrowMut};
 
     use cosmwasm_std::{Addr, coin, coins, Empty};
     use cw_multi_test::{App, BasicApp, Contract, Executor};
     use cw_multi_test::ContractWrapper;
 
     use crate::{execute, instantiate, query};
+    use crate::error::ContractError;
     use crate::msg::{ExecMsg, InstantiateMsg, QueryMsg, ValueResp};
 
     fn counting_contract() -> Box<dyn Contract<Empty>> {
@@ -330,6 +331,53 @@ mod test {
         assert_eq!(
             app.wrap().query_all_balances(contract_addr).unwrap(),
             coins(5, "atom")
+        );
+    }
+
+    #[test]
+    fn unauthorized_withdraw() {
+        let owner = Addr::unchecked("owner");
+        let member = Addr::unchecked("member");
+
+        let mut app = App::default();
+
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = instantiate_contract(app.borrow_mut(), contract_id, None, Some(10), Some(owner.clone()));
+
+        let err = app
+            .execute_contract(member, contract_addr, &ExecMsg::Withdraw {}, &[])
+            .unwrap_err();
+
+        assert_eq!(
+            ContractError::Unauthorized {
+                owner: owner.into()
+            },
+            err.downcast().unwrap()
+        );
+    }
+
+    #[test]
+    fn unauthorized_withdraw_to() {
+        let owner = Addr::unchecked("owner");
+        let member = Addr::unchecked("member");
+        let recipient = Addr::unchecked("recipient");
+
+        let mut app = App::default();
+
+        let contract_id = app.store_code(counting_contract());
+
+        let contract_addr = instantiate_contract(app.borrow_mut(), contract_id, None, Some(10), Some(owner.clone()));
+
+        let err = app
+            .execute_contract(member, contract_addr, &ExecMsg::WithdrawTo {recipient: recipient.to_string(), funds: None}, &[])
+            .unwrap_err();
+
+        assert_eq!(
+            ContractError::Unauthorized {
+                owner: owner.into()
+            },
+            err.downcast().unwrap()
         );
     }
 }
