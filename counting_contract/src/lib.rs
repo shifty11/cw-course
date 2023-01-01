@@ -5,6 +5,8 @@ mod contract;
 pub mod msg;
 mod state;
 mod error;
+#[cfg(test)]
+pub mod multitest;
 
 #[entry_point]
 pub fn instantiate(deps: DepsMut, _env: Env, info: MessageInfo, msg: msg::InstantiateMsg) -> StdResult<Response> {
