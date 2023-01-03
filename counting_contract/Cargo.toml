@@ -22,5 +22,5 @@ serde = { version = "1.0.151", features = ["derive"] }
 thiserror = "1.0.38"
 
 [dev-dependencies]
-counting-contract-0_1 = { git = "ssh://github.com/shifty11/cw-course.git", tag = "0.1.0", package = "counting_contract", features = ["tests"] }
+counting-contract-0_1 = { git = "ssh://github.com/shifty11/cw-course.git", branch = "0.1.1", package = "counting_contract", features = ["tests"] }
 cw-multi-test = "0.16.2"

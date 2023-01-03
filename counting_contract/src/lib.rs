@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, to_binary};
+use cosmwasm_std::{Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult, to_binary};
 use crate::error::ContractError;
 
 mod contract;
@@ -37,4 +37,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: msg::ExecMsg) ->
         Withdraw {} => exec::withdraw(deps, env, info),
         WithdrawTo { recipient, funds } => exec::withdraw_to(deps, env, info, recipient, funds),
     }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    contract::migrate(deps)
 }

@@ -1,19 +1,21 @@
-use cosmwasm_std::{DepsMut, MessageInfo, Response, StdResult};
+use cosmwasm_std::{Addr, Coin, DepsMut, MessageInfo, Response, StdResult};
+use cw_storage_plus::Item;
 
 use crate::msg::InstantiateMsg;
-use crate::state::{OWNER, STATE, State};
+use crate::state::{STATE, State};
 
 pub fn instantiate(deps: DepsMut, msg: InstantiateMsg, info: MessageInfo) -> StdResult<Response> {
     let counter = msg.counter.unwrap_or_else(|| 0);
     let minimal_donation = msg.minimal_donation;
+    let owner = info.sender;
     STATE.save(
         deps.storage,
         &State {
             counter,
             minimal_donation,
+            owner,
         },
     )?;
-    OWNER.save(deps.storage, &info.sender)?;
     Ok(Response::new())
 }
 
@@ -37,7 +39,7 @@ pub mod exec {
     use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
     use crate::error::ContractError;
-    use crate::state::{OWNER, STATE};
+    use crate::state::{STATE};
 
     pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
         let mut state = STATE.load(deps.storage)?;
@@ -59,9 +61,9 @@ pub mod exec {
     }
 
     pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-        let owner = OWNER.load(deps.storage)?;
-        if owner != info.sender {
-            return Err(ContractError::Unauthorized { owner: owner.to_string() });
+        let state = STATE.load(deps.storage)?;
+        if state.owner != info.sender {
+            return Err(ContractError::Unauthorized { owner: state.owner.to_string() });
         }
 
         let balance = deps.querier.query_all_balances(&env.contract.address)?;
@@ -80,9 +82,9 @@ pub mod exec {
     }
 
     pub fn withdraw_to(deps: DepsMut, env: Env, info: MessageInfo, recipient: String, funds: Option<Vec<Coin>>) -> Result<Response, ContractError> {
-        let owner = OWNER.load(deps.storage)?;
-        if owner != info.sender {
-            return Err(ContractError::Unauthorized { owner: owner.to_string() });
+        let state = STATE.load(deps.storage)?;
+        if state.owner != info.sender {
+            return Err(ContractError::Unauthorized { owner: state.owner.to_string() });
         }
 
         let mut balance = deps.querier.query_all_balances(&env.contract.address)?;
@@ -115,4 +117,25 @@ pub mod exec {
 
         Ok(resp)
     }
+}
+
+pub fn migrate(deps: DepsMut) -> StdResult<Response> {
+    const COUNTER: Item<u64> = Item::new("counter");
+    const MINIMAL_DONATION: Item<Coin> = Item::new("minimal_donation");
+    const OWNER: Item<Addr> = Item::new("owner");
+
+    let counter = COUNTER.load(deps.storage)?;
+    let minimal_donation = MINIMAL_DONATION.load(deps.storage)?;
+    let owner = OWNER.load(deps.storage)?;
+
+    STATE.save(
+        deps.storage,
+        &State {
+            counter,
+            minimal_donation,
+            owner,
+        },
+    )?;
+
+    Ok(Response::new())
 }

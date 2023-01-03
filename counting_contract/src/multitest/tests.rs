@@ -276,7 +276,8 @@ fn migration() {
     let contract = CountingContract_0_1::instantiate(
         &mut app,
         old_code_id,
-        owner,
+        owner.clone(),
+        &admin,
         None,
         10,
     )
@@ -297,7 +298,8 @@ fn migration() {
         state,
         State {
             counter: 1,
-            minimal_donation: coin(10, ATOM)
+            minimal_donation: coin(10, ATOM),
+            owner: owner.clone(),
         }
     );
 }

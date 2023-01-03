@@ -2,7 +2,7 @@ use cosmwasm_std::{Addr, Coin, coin, coins, Empty, StdResult};
 use cw_multi_test::{App, BasicApp, Executor};
 use cw_multi_test::ContractWrapper;
 
-use crate::{execute, instantiate, query};
+use crate::{execute, instantiate, migrate, query};
 use crate::error::ContractError;
 use crate::msg::{ExecMsg, InstantiateMsg, QueryMsg, ValueResp};
 
@@ -26,7 +26,7 @@ impl CountingContract {
     }
 
     pub fn store_code(app: &mut App) -> u64 {
-        let contract = ContractWrapper::new(execute, instantiate, query);
+        let contract = ContractWrapper::new(execute, instantiate, query).with_migrate(migrate);
         app.store_code(Box::new(contract))
     }
 
