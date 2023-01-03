@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Coin, coin, coins, StdResult};
+use cosmwasm_std::{Addr, Coin, coin, coins, Empty, StdResult};
 use cw_multi_test::{App, BasicApp, Executor};
 use cw_multi_test::ContractWrapper;
 
@@ -110,6 +110,13 @@ impl CountingContract {
     pub fn query_increment(&self, app: &App, number: u64) -> StdResult<ValueResp> {
         app.wrap()
             .query_wasm_smart(self.0.clone(), &QueryMsg::Increment { number })
+    }
+
+    #[track_caller]
+    pub fn migrate(app: &mut App, contract: Addr, code_id: u64, sender: &Addr) -> StdResult<Self> {
+        app.migrate_contract(sender.clone(), contract.clone(), &Empty {}, code_id)
+            .map_err(|err| err.downcast().unwrap())
+            .map(|_| Self(contract))
     }
 }
 

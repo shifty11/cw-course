@@ -1,11 +1,18 @@
 use cosmwasm_std::{DepsMut, MessageInfo, Response, StdResult};
 
 use crate::msg::InstantiateMsg;
-use crate::state::{COUNTER, MINIMAL_DONATION, OWNER};
+use crate::state::{OWNER, STATE, State};
 
 pub fn instantiate(deps: DepsMut, msg: InstantiateMsg, info: MessageInfo) -> StdResult<Response> {
-    COUNTER.save(deps.storage, &msg.counter.unwrap_or_else(|| 0))?;
-    MINIMAL_DONATION.save(deps.storage, &msg.minimal_donation)?;
+    let counter = msg.counter.unwrap_or_else(|| 0);
+    let minimal_donation = msg.minimal_donation;
+    STATE.save(
+        deps.storage,
+        &State {
+            counter,
+            minimal_donation,
+        },
+    )?;
     OWNER.save(deps.storage, &info.sender)?;
     Ok(Response::new())
 }
@@ -14,10 +21,10 @@ pub mod query {
     use cosmwasm_std::{Deps, StdResult};
 
     use crate::msg::ValueResp;
-    use crate::state::COUNTER;
+    use crate::state::{STATE};
 
     pub fn value(deps: Deps) -> StdResult<ValueResp> {
-        let value = COUNTER.load(deps.storage)?;
+        let value = STATE.load(deps.storage)?.counter;
         Ok(ValueResp { value })
     }
 
@@ -28,26 +35,25 @@ pub mod query {
 
 pub mod exec {
     use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
-    use crate::error::ContractError;
 
-    use crate::state::{COUNTER, MINIMAL_DONATION, OWNER};
+    use crate::error::ContractError;
+    use crate::state::{OWNER, STATE};
 
     pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
-        let mut counter = COUNTER.load(deps.storage)?;
-        let minimal_donation = MINIMAL_DONATION.load(deps.storage)?;
+        let mut state = STATE.load(deps.storage)?;
 
-        if minimal_donation.amount.is_zero() ||
+        if state.minimal_donation.amount.is_zero() ||
             info.funds.iter().any(|coin| {
-                coin.denom == minimal_donation.denom && coin.amount >= minimal_donation.amount
+                coin.denom == state.minimal_donation.denom && coin.amount >= state.minimal_donation.amount
             }) {
-            counter += 1;
-            COUNTER.save(deps.storage, &counter)?;
+            state.counter += 1;
+            STATE.save(deps.storage, &state)?;
         }
 
         let resp = Response::new()
             .add_attribute("action", "poke")
             .add_attribute("sender", info.sender.as_str())
-            .add_attribute("counter", counter.to_string());
+            .add_attribute("counter", state.counter.to_string());
 
         Ok(resp)
     }
@@ -55,7 +61,7 @@ pub mod exec {
     pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(ContractError::Unauthorized {owner: owner.to_string()});
+            return Err(ContractError::Unauthorized { owner: owner.to_string() });
         }
 
         let balance = deps.querier.query_all_balances(&env.contract.address)?;
@@ -73,10 +79,10 @@ pub mod exec {
         Ok(resp)
     }
 
-    pub fn withdraw_to(deps: DepsMut, env: Env, info: MessageInfo, recipient: String, funds: Option<Vec<Coin>>) -> Result<Response, ContractError>  {
+    pub fn withdraw_to(deps: DepsMut, env: Env, info: MessageInfo, recipient: String, funds: Option<Vec<Coin>>) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
         if owner != info.sender {
-            return Err(ContractError::Unauthorized {owner: owner.to_string()});
+            return Err(ContractError::Unauthorized { owner: owner.to_string() });
         }
 
         let mut balance = deps.querier.query_all_balances(&env.contract.address)?;
