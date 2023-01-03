@@ -4,7 +4,7 @@ use cw_multi_test::ContractWrapper;
 
 use crate::{execute, instantiate, migrate, query};
 use crate::error::ContractError;
-use crate::msg::{ExecMsg, InstantiateMsg, QueryMsg, ValueResp};
+use crate::msg::{ExecMsg, InstantiateMsg, Parent, QueryMsg, ValueResp};
 
 pub struct CountingContract(Addr);
 
@@ -38,11 +38,13 @@ impl CountingContract {
         admin: impl Into<Option<&'a Addr>>,
         counter: impl Into<Option<u64>>,
         minimal_donation: impl Into<Option<u128>>,
+        parent: impl Into<Option<Parent>>,
     ) -> StdResult<Self> {
         let sender = sender.into().cloned().unwrap_or_else(|| Addr::unchecked("sender"));
         let counter = Some(counter.into().unwrap_or_default());
         let admin = admin.into().map(Addr::to_string);
         let minimal_donation = coin(minimal_donation.into().unwrap_or_else(|| 0), "atom");
+        let parent = parent.into();
 
         app.instantiate_contract(
             code_id,
@@ -50,6 +52,7 @@ impl CountingContract {
             &InstantiateMsg {
                 counter,
                 minimal_donation,
+                parent,
             },
             &[],
             "Counting contract",

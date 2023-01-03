@@ -33,7 +33,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: msg::ExecMsg) ->
     use msg::ExecMsg::*;
 
     match msg {
-        Donate {} => exec::donate(deps, info),
+        Donate {} => exec::donate(deps, env, info),
         Withdraw {} => exec::withdraw(deps, env, info),
         WithdrawTo { recipient, funds } => exec::withdraw_to(deps, env, info, recipient, funds),
     }

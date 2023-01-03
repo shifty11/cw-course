@@ -1,11 +1,12 @@
 use cosmwasm_std::{Addr, Coin, DepsMut, MessageInfo, Response, StdResult};
 use cw_storage_plus::Item;
+use serde::{Deserialize, Serialize};
 
 use cw2::{ContractVersion, get_contract_version, set_contract_version};
 use crate::error::ContractError;
 
 use crate::msg::InstantiateMsg;
-use crate::state::{STATE, State};
+use crate::state::{PARENT_DONATION, ParentDonation, STATE, State};
 
 const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -17,14 +18,29 @@ pub fn instantiate(deps: DepsMut, msg: InstantiateMsg, info: MessageInfo) -> Std
     let counter = msg.counter.unwrap_or_else(|| 0);
     let minimal_donation = msg.minimal_donation;
     let owner = info.sender;
+    let donating_parent = msg.parent.as_ref().map(|p| p.donating_period);
     STATE.save(
         deps.storage,
         &State {
             counter,
             minimal_donation,
             owner,
+            donating_parent,
         },
     )?;
+
+    let parent = msg.parent;
+    if let Some(parent) = parent {
+        PARENT_DONATION.save(
+            deps.storage,
+            &ParentDonation {
+                address: deps.api.addr_validate(&parent.addr)?,
+                donating_parent_period: parent.donating_period,
+                part: parent.part,
+            },
+        )?;
+    }
+
     Ok(Response::new())
 }
 
@@ -45,23 +61,57 @@ pub mod query {
 }
 
 pub mod exec {
-    use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+    use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, to_binary, Uint128, WasmMsg};
 
     use crate::error::ContractError;
-    use crate::state::STATE;
+    use crate::msg::ExecMsg;
+    use crate::state::{PARENT_DONATION, STATE};
 
-    pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    pub fn donate(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError>  {
         let mut state = STATE.load(deps.storage)?;
+        let mut resp = Response::new();
 
-        if state.minimal_donation.amount.is_zero() ||
-            info.funds.iter().any(|coin| {
-                coin.denom == state.minimal_donation.denom && coin.amount >= state.minimal_donation.amount
-            }) {
+        if state.minimal_donation.amount.is_zero()
+            || info.funds.iter().any(|coin| {
+            coin.denom == state.minimal_donation.denom
+                && coin.amount >= state.minimal_donation.amount
+        })
+        {
             state.counter += 1;
+
+            if let Some(parent) = &mut state.donating_parent {
+                *parent -= 1;
+
+                if *parent == 0 {
+                    let parent_donation = PARENT_DONATION.load(deps.storage)?;
+                    *parent = parent_donation.donating_parent_period;
+
+                    let funds: Vec<_> = deps
+                        .querier
+                        .query_all_balances(env.contract.address)?
+                        .into_iter()
+                        .map(|mut coin| {
+                            coin.amount = coin.amount * parent_donation.part;
+                            coin
+                        })
+                        .collect();
+
+                    let msg = WasmMsg::Execute {
+                        contract_addr: parent_donation.address.to_string(),
+                        msg: to_binary(&ExecMsg::Donate {})?,
+                        funds,
+                    };
+
+                    resp = resp
+                        .add_message(msg)
+                        .add_attribute("donated_to_parent", parent_donation.address.to_string());
+                }
+            }
+
             STATE.save(deps.storage, &state)?;
         }
 
-        let resp = Response::new()
+        resp = resp
             .add_attribute("action", "poke")
             .add_attribute("sender", info.sender.as_str())
             .add_attribute("counter", state.counter.to_string());
@@ -140,6 +190,7 @@ pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
 
     let resp = match contract_version.version.as_str() {
         "0.1.0" => migrate_0_1_0(deps.branch()).map_err(ContractError::from)?,
+        "0.2.0" => migrate_0_2_0(deps.branch()).map_err(ContractError::from)?,
         CONTRACT_VERSION => return Ok(Response::default()),
         version => {
             return Err(ContractError::InvalidContractVersion {
@@ -168,6 +219,36 @@ pub fn migrate_0_1_0(deps: DepsMut) -> Result<Response, ContractError> {
             counter,
             minimal_donation,
             owner,
+            donating_parent: None,
+        },
+    )?;
+
+    Ok(Response::new())
+}
+
+pub fn migrate_0_2_0(deps: DepsMut) -> StdResult<Response> {
+    #[derive(Serialize, Deserialize)]
+    struct OldState {
+        counter: u64,
+        minimal_donation: Coin,
+        owner: Addr,
+    }
+
+    const OLD_STATE: Item<OldState> = Item::new("state");
+
+    let OldState {
+        counter,
+        minimal_donation,
+        owner,
+    } = OLD_STATE.load(deps.storage)?;
+
+    STATE.save(
+        deps.storage,
+        &State {
+            counter,
+            minimal_donation,
+            owner,
+            donating_parent: None,
         },
     )?;
 
