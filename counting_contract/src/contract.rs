@@ -1,10 +1,19 @@
 use cosmwasm_std::{Addr, Coin, DepsMut, MessageInfo, Response, StdResult};
 use cw_storage_plus::Item;
 
+use cw2::{ContractVersion, get_contract_version, set_contract_version};
+use crate::error::ContractError;
+
 use crate::msg::InstantiateMsg;
 use crate::state::{STATE, State};
 
+const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
+const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
 pub fn instantiate(deps: DepsMut, msg: InstantiateMsg, info: MessageInfo) -> StdResult<Response> {
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
     let counter = msg.counter.unwrap_or_else(|| 0);
     let minimal_donation = msg.minimal_donation;
     let owner = info.sender;
@@ -23,7 +32,7 @@ pub mod query {
     use cosmwasm_std::{Deps, StdResult};
 
     use crate::msg::ValueResp;
-    use crate::state::{STATE};
+    use crate::state::STATE;
 
     pub fn value(deps: Deps) -> StdResult<ValueResp> {
         let value = STATE.load(deps.storage)?.counter;
@@ -39,7 +48,7 @@ pub mod exec {
     use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
 
     use crate::error::ContractError;
-    use crate::state::{STATE};
+    use crate::state::STATE;
 
     pub fn donate(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
         let mut state = STATE.load(deps.storage)?;
@@ -119,7 +128,32 @@ pub mod exec {
     }
 }
 
-pub fn migrate(deps: DepsMut) -> StdResult<Response> {
+pub fn migrate(mut deps: DepsMut) -> Result<Response, ContractError> {
+    let contract_version = get_contract_version(deps.storage).
+        unwrap_or_else(|_| ContractVersion { contract: CONTRACT_NAME.to_string(), version: String::from("0.1.0") });
+
+    if contract_version.contract != CONTRACT_NAME {
+        return Err(ContractError::InvalidContract {
+            contract: contract_version.contract,
+        });
+    }
+
+    let resp = match contract_version.version.as_str() {
+        "0.1.0" => migrate_0_1_0(deps.branch()).map_err(ContractError::from)?,
+        CONTRACT_VERSION => return Ok(Response::default()),
+        version => {
+            return Err(ContractError::InvalidContractVersion {
+                version: version.into(),
+            })
+        }
+    };
+
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(resp)
+}
+
+pub fn migrate_0_1_0(deps: DepsMut) -> Result<Response, ContractError> {
     const COUNTER: Item<u64> = Item::new("counter");
     const MINIMAL_DONATION: Item<Coin> = Item::new("minimal_donation");
     const OWNER: Item<Addr> = Item::new("owner");
